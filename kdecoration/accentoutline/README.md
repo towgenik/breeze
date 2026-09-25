@@ -104,36 +104,50 @@ signal apply them live.
 
 Do not use it. The process starts, never registers its D-Bus service, never
 spawns Xwayland, and never enables the output. It produces no journal output at
-all, which is the tell: it is blocked before it logs anything.
+all, which is the tell.
 
-Two independent causes, both specific to an SDDM-managed session:
+**Where it blocks.** The hung process has no `/dev/dri` file descriptor at all,
+so it never reaches DRM initialisation. It is stuck earlier, while asking logind
+for control of the seat, before KWin logs anything:
 
-1. **Leaked PAM wallet helpers.** `pam_kwallet5` starts one
-   `ksecretd --pam-login` per session, and on this build they never exit. A
-   stale helper keeps its logind session in `closing` forever, so the seat
-   accumulates sessions that never finish releasing. Nine of them had piled up
-   here. The next compositor start then blocks inside logind's `TakeControl`
-   while negotiating the seat, before it logs anything.
+```sh
+ls -l /proc/$(pgrep -x kwin_wayland)/fd | grep dri   # no output -> blocked before DRM
+```
 
-2. **Three supervisors racing for one DRM master.** `sddm-helper` runs
-   `startplasma-wayland`, so SDDM supervises the whole session. Stopping KWin
-   makes logind mark the session as closing, SDDM tears the session down and
-   builds a replacement with its own KWin, while systemd starts another one
-   from `plasma-kwin_wayland.service`. The loser hangs. Killing only
-   `kwin_wayland` and leaving `kwin_wayland_wrapper` alive reproduces this too.
+**Why.** `sddm-helper` runs `startplasma-wayland`, so SDDM supervises the whole
+session. Stopping KWin ends the logind session, and SDDM then builds a
+replacement session while systemd immediately starts another KWin from
+`plasma-kwin_wayland.service`. The replacement KWin issues its request for seat
+control while logind is still transitioning between session generations, and
+that request never completes. It loses a race, so it blocks forever instead of
+failing.
 
-Use the helper instead, which works with both:
+A compositor restart therefore cannot be done in isolation on an SDDM-managed
+session; the session has to be recycled, and open applications are closed with
+it.
+
+**What is not the cause.** Leaked `pam_kwallet5` helpers (`ksecretd
+--pam-login`, one per session, never exiting on this build) are a separate real
+defect: each stale helper pins its logind session in `closing` forever and
+widens the transition window. Nine had accumulated here. They are not the
+trigger, though — verified on 2026-09-26 that with a clean session table a
+plain `systemctl --user restart` still hangs identically, no `/dev/dri`
+descriptor and no log output. The helper reaps them anyway, because they make
+every later restart slower and noisier.
+
+**The fix.** Since a lost race is not a broken system, the correct strategy is
+to retry rather than to avoid the race:
 
 ```sh
 kdecoration/accentoutline/tools/kwin-restart
 ```
 
-It stops the unit first so systemd cannot start a competing KWin, reaps stale
-`ksecretd` helpers from non-active sessions, lets SDDM rebuild the session
-(starting the unit itself if SDDM does not), reaps hung instances, and waits
-for a genuinely usable compositor (D-Bus registered *and* an output enabled)
-rather than trusting a live process. The session is recycled as a consequence,
-so open applications are closed.
+It stops the unit first so systemd cannot start a competing KWin, lets SDDM
+rebuild the session (starting the unit itself if SDDM does not), reaps any
+instance that issued its control request too early, and keeps waiting until the
+compositor is genuinely usable (D-Bus registered *and* an output enabled). The
+retry is what makes it converge, not luck: by the time a reaped instance is
+replaced, logind has finished the session transition.
 
 ### Checking the damage by hand
 
