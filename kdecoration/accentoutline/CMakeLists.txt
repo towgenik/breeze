@@ -10,7 +10,7 @@ add_library(accentoutlinedecoration MODULE
 )
 
 set_target_properties(accentoutlinedecoration PROPERTIES
-    OUTPUT_NAME org.kde.breeze.accentoutline
+    OUTPUT_NAME io.github.towgenik.accentoutline
 )
 
 target_include_directories(accentoutlinedecoration
