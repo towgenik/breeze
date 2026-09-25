@@ -10,14 +10,16 @@ configurable outline using the accent color resolved by Plasma.
 - Rounded corners: enabled
 - Corner radius: **8 logical pixels**
 - Custom accent override: disabled
+- Outline visibility: focused window only
 - Titlebar: disabled
 - Window buttons: none
 - Shadow: none
 - Accent: Plasma's wallpaper-derived accent, with palette/config fallbacks
 
 The outline is an external KWin `BorderOutline`; it does not consume client
-area. Resize-only margins are kept around the client so edge resizing remains
-available. Maximized windows have no outline.
+area. It is drawn only on the focused window. Resize-only margins are kept
+around the client so edge resizing remains available. Maximized windows have no
+outline.
 
 ## Minimum KDecoration3 requirements
 

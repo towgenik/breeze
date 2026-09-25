@@ -40,7 +40,8 @@ ConfigWidget::ConfigWidget(QObject *parent, const KPluginMetaData &data, const Q
     form->addRow(i18n("Use custom accent color:"), m_useCustomAccent = new QCheckBox(widget()));
     form->addRow(i18n("Custom accent color:"), m_customAccentColor = new KColorButton(widget()));
 
-    auto *help = new QLabel(i18n("The outline requests Plasma's wallpaper accent color. If Plasma cannot provide one, the current palette accent is used. "
+    auto *help = new QLabel(i18n("The outline is drawn only on the focused window. It requests Plasma's wallpaper accent color; if Plasma cannot provide one, "
+                                 "the current palette accent is used. "
                                  "Enable a custom color to override both. Set the width to 0 to hide the outline."),
                             widget());
     help->setWordWrap(true);

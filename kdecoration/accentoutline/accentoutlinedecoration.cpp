@@ -224,6 +224,7 @@ void Decoration::updateDecoration()
     const qreal scale = window()->nextScale() > 0 ? window()->nextScale() : 1;
     const qreal outlineWidth = KDecoration3::snapToPixelGrid(configuredWidth, scale);
     const bool maximized = window()->isMaximized();
+    const bool focused = window()->isActive();
     const qreal resizeWidth = maximized ? 0 : qMax<qreal>(KDecoration3::pixelSize(scale), settings() ? settings()->largeSpacing() : 0);
 
     // There is deliberately no titlebar or button area. The resize-only
@@ -233,7 +234,7 @@ void Decoration::updateDecoration()
     setBorders(QMarginsF());
     setResizeOnlyBorders(maximized ? QMarginsF() : QMarginsF(resizeWidth, resizeWidth, resizeWidth, resizeWidth));
 
-    if (configuredWidth <= 0 || maximized) {
+    if (configuredWidth <= 0 || maximized || !focused) {
         setBorderRadius(KDecoration3::BorderRadius());
         setBorderOutline(KDecoration3::BorderOutline());
     } else {
@@ -256,8 +257,8 @@ void Decoration::updateDecoration()
     if (debugEnabled()) {
         const auto outline = borderOutline();
         qCInfo(lcAccentOutline) << "geometry: borders" << borders() << "resizeOnly" << resizeOnlyBorders() << "titleBar" << titleBar() << "maximized"
-                                << maximized << "outlineNull" << outline.isNull() << "thickness" << outline.thickness() << "radius" << borderRadius().topLeft()
-                                << "color" << outline.color().name() << "shadow" << (shadow() ? "present" : "null");
+                                << maximized << "focused" << focused << "outlineNull" << outline.isNull() << "thickness" << outline.thickness() << "radius"
+                                << borderRadius().topLeft() << "color" << outline.color().name() << "shadow" << (shadow() ? "present" : "null");
     }
     update();
 }
