@@ -234,13 +234,21 @@ void Decoration::updateDecoration()
     setBorders(QMarginsF());
     setResizeOnlyBorders(maximized ? QMarginsF() : QMarginsF(resizeWidth, resizeWidth, resizeWidth, resizeWidth));
 
+    // KWin turns the border radius into a shader mask on the window contents
+    // (Window::updateDecorationBorderRadius() -> Item::borderRadius() ->
+    // cornerStack in the scene renderer), which is completely independent of
+    // the BorderOutline. Only the outline is focus-dependent, so unfocused
+    // windows keep their rounded corners. This mirrors how Breeze separates
+    // the two in breezedecoration.cpp.
+    const bool rounded = m_outlineSettings ? m_outlineSettings->roundedCorners() : true;
+    const int configuredRadius = m_outlineSettings ? m_outlineSettings->cornerRadius() : 8;
+    const qreal radius = rounded ? std::max<qreal>(KDecoration3::snapToPixelGrid(configuredRadius, scale), 0) : 0;
+
+    setBorderRadius(maximized ? KDecoration3::BorderRadius() : KDecoration3::BorderRadius(radius));
+
     if (configuredWidth <= 0 || maximized || !focused) {
-        setBorderRadius(KDecoration3::BorderRadius());
         setBorderOutline(KDecoration3::BorderOutline());
     } else {
-        const bool rounded = m_outlineSettings ? m_outlineSettings->roundedCorners() : true;
-        const int configuredRadius = m_outlineSettings ? m_outlineSettings->cornerRadius() : 8;
-        const qreal radius = rounded ? std::clamp<qreal>(configuredRadius, 0.0, outlineWidth) : 0.0;
         const bool useCustomAccent = m_outlineSettings && m_outlineSettings->useCustomAccent();
         const QColor customAccent = m_outlineSettings ? m_outlineSettings->customAccentColor() : QColor();
         const QColor outlineColor = useCustomAccent && customAccent.isValid() && customAccent.alpha() > 0 ? customAccent : resolvedAccentColor();
@@ -249,7 +257,6 @@ void Decoration::updateDecoration()
             qCDebug(lcAccentOutline) << "Accent source: custom configuration" << customAccent.name();
         }
 
-        setBorderRadius(KDecoration3::BorderRadius(radius));
         setBorderOutline(KDecoration3::BorderOutline(outlineWidth, outlineColor, KDecoration3::BorderRadius(radius)));
     }
 

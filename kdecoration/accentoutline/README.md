@@ -21,6 +21,15 @@ area. It is drawn only on the focused window. Resize-only margins are kept
 around the client so edge resizing remains available. Maximized windows have no
 outline.
 
+Rounded corners are a separate mechanism and apply to every window, focused or
+not. KWin reads the decoration's `borderRadius()` in
+`Window::updateDecorationBorderRadius()`, forwards it to the window item, and the
+scene renderer turns it into a corner mask
+(`ShaderTrait::RoundedCorners`) on the window contents. The outline is a
+different item (`OutlinedBorderItem`) with its own radius, so clearing the
+outline does not clear the corners. Breeze separates the two the same way.
+Maximized windows are never rounded.
+
 ## Minimum KDecoration3 requirements
 
 A native KDecoration3 plugin needs all of the following:
