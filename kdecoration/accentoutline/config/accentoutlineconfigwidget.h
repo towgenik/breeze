@@ -16,7 +16,9 @@
 
 #include <memory>
 
+class QCheckBox;
 class QSpinBox;
+class KColorButton;
 
 namespace AccentOutline
 {
@@ -35,6 +37,10 @@ private:
     void updateChanged();
 
     QSpinBox *m_outlineWidth = nullptr;
+    QCheckBox *m_roundedCorners = nullptr;
+    QSpinBox *m_cornerRadius = nullptr;
+    QCheckBox *m_useCustomAccent = nullptr;
+    KColorButton *m_customAccentColor = nullptr;
     std::unique_ptr<AccentOutline::AccentOutlineSettings> m_settings;
 };
 }

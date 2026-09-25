@@ -157,7 +157,10 @@ bool Decoration::init()
     m_outlineConfig = KSharedConfig::openConfig(QStringLiteral("accentoutlinerc"));
     m_outlineConfigWatcher = KConfigWatcher::create(m_outlineConfig);
     connect(m_outlineConfigWatcher.data(), &KConfigWatcher::configChanged, this, [this](const KConfigGroup &group, const QByteArrayList &names) {
-        if (group.name() == QLatin1String("Common") && (names.isEmpty() || names.contains(QByteArrayLiteral("OutlineWidth")))) {
+        const bool relevant = names.isEmpty() || names.contains(QByteArrayLiteral("OutlineWidth")) || names.contains(QByteArrayLiteral("RoundedCorners"))
+            || names.contains(QByteArrayLiteral("CornerRadius")) || names.contains(QByteArrayLiteral("UseCustomAccent"))
+            || names.contains(QByteArrayLiteral("CustomAccentColor"));
+        if (group.name() == QLatin1String("Common") && relevant) {
             qCDebug(lcAccentOutline) << "Outline configuration changed; reloading";
             reconfigure();
         }
@@ -201,7 +204,8 @@ void Decoration::reconfigure()
 {
     m_outlineSettings = std::make_unique<AccentOutline::AccentOutlineSettings>();
     m_outlineSettings->load();
-    qCDebug(lcAccentOutline) << "Loaded outline width:" << m_outlineSettings->outlineWidth();
+    qCDebug(lcAccentOutline) << "Loaded outline settings: width" << m_outlineSettings->outlineWidth() << "rounded" << m_outlineSettings->roundedCorners()
+                             << "radius" << m_outlineSettings->cornerRadius() << "customAccent" << m_outlineSettings->useCustomAccent();
 
     if (m_outlineSettings) {
         connect(m_outlineSettings.get(), &KConfigSkeleton::configChanged, this, &Decoration::updateDecoration);
@@ -233,19 +237,27 @@ void Decoration::updateDecoration()
         setBorderRadius(KDecoration3::BorderRadius());
         setBorderOutline(KDecoration3::BorderOutline());
     } else {
-        // Keep the corners visually tied to the outline without introducing a
-        // second, separately painted frame.
-        const qreal radius = std::clamp<qreal>(outlineWidth, 4.0, 16.0);
+        const bool rounded = m_outlineSettings ? m_outlineSettings->roundedCorners() : true;
+        const int configuredRadius = m_outlineSettings ? m_outlineSettings->cornerRadius() : 8;
+        const qreal radius = rounded ? std::clamp<qreal>(configuredRadius, 0.0, outlineWidth) : 0.0;
+        const bool useCustomAccent = m_outlineSettings && m_outlineSettings->useCustomAccent();
+        const QColor customAccent = m_outlineSettings ? m_outlineSettings->customAccentColor() : QColor();
+        const QColor outlineColor = useCustomAccent && customAccent.isValid() && customAccent.alpha() > 0 ? customAccent : resolvedAccentColor();
+
+        if (useCustomAccent && customAccent.isValid() && customAccent.alpha() > 0) {
+            qCDebug(lcAccentOutline) << "Accent source: custom configuration" << customAccent.name();
+        }
+
         setBorderRadius(KDecoration3::BorderRadius(radius));
-        setBorderOutline(KDecoration3::BorderOutline(outlineWidth, resolvedAccentColor(), KDecoration3::BorderRadius(radius)));
+        setBorderOutline(KDecoration3::BorderOutline(outlineWidth, outlineColor, KDecoration3::BorderRadius(radius)));
     }
 
     setShadow(nullptr);
     if (debugEnabled()) {
         const auto outline = borderOutline();
         qCInfo(lcAccentOutline) << "geometry: borders" << borders() << "resizeOnly" << resizeOnlyBorders() << "titleBar" << titleBar() << "maximized"
-                                << maximized << "outlineNull" << outline.isNull() << "thickness" << outline.thickness() << "color" << outline.color().name()
-                                << "shadow" << (shadow() ? "present" : "null");
+                                << maximized << "outlineNull" << outline.isNull() << "thickness" << outline.thickness() << "radius" << borderRadius().topLeft()
+                                << "color" << outline.color().name() << "shadow" << (shadow() ? "present" : "null");
     }
     update();
 }

@@ -12,5 +12,27 @@
       <min>0</min>
       <max>64</max>
     </entry>
+
+    <entry name="RoundedCorners" type="Bool">
+      <label>Use rounded outline corners</label>
+      <default>true</default>
+    </entry>
+
+    <entry name="CornerRadius" type="Int">
+      <label>Outline corner radius in logical pixels</label>
+      <default>8</default>
+      <min>0</min>
+      <max>32</max>
+    </entry>
+
+    <entry name="UseCustomAccent" type="Bool">
+      <label>Use a custom outline accent color</label>
+      <default>false</default>
+    </entry>
+
+    <entry name="CustomAccentColor" type="Color">
+      <label>Custom outline accent color</label>
+      <default>61, 174, 233</default>
+    </entry>
   </group>
 </kcfg>

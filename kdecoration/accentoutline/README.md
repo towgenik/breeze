@@ -7,6 +7,9 @@ configurable outline using the accent color resolved by Plasma.
 ## Defaults
 
 - Outline width: **8 logical pixels**
+- Rounded corners: enabled
+- Corner radius: **8 logical pixels**
+- Custom accent override: disabled
 - Titlebar: disabled
 - Window buttons: none
 - Shadow: none
@@ -48,10 +51,16 @@ decorations entirely.
 
 Install the plugin and its KCM, then select **Accent Outline** in **System
 Settings → Window Management → Window Decoration**. Its configuration module
-exposes an outline-width control from 0–64 px.
+exposes:
+
+- outline width: 0–64 px
+- rounded-corner toggle
+- corner radius: 0–32 px
+- custom accent-color override
 
 The plugin asks Plasma for the current wallpaper accent. If Plasma cannot
-provide one, it falls back to the current palette accent.
+provide one, it falls back to the current palette accent. Enable the custom
+color option to override that choice.
 
 ## Debug
 

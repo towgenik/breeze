@@ -12,6 +12,12 @@ section() {
     printf '\n== %s ==\n' "$1"
 }
 
+read_outline_entry() {
+    local value
+    value=$(kreadconfig6 --file accentoutlinerc --group Common --key "$1" 2>/dev/null || true)
+    printf '%s' "${value:-$2}"
+}
+
 section "Files"
 printf 'plugin: %s\n' "$plugin_file"
 if [ -f "$plugin_file" ]; then
@@ -31,8 +37,11 @@ printf 'kwinrc library: '
 kreadconfig6 --file kwinrc --group org.kde.kdecoration2 --key library 2>/dev/null || echo '<unavailable>'
 printf 'kwinrc theme:   '
 kreadconfig6 --file kwinrc --group org.kde.kdecoration2 --key theme 2>/dev/null || echo '<unavailable>'
-printf 'outline width:  '
-kreadconfig6 --file accentoutlinerc --group Common --key OutlineWidth 2>/dev/null || echo '8 (schema default; file not written yet)'
+printf 'outline width:  '; read_outline_entry OutlineWidth '8 (schema default; file not written yet)'; printf '\n'
+printf 'rounded corners: '; read_outline_entry RoundedCorners 'true (schema default; file not written yet)'; printf '\n'
+printf 'corner radius:   '; read_outline_entry CornerRadius '8 (schema default; file not written yet)'; printf '\n'
+printf 'custom accent:   '; read_outline_entry UseCustomAccent 'false (schema default; file not written yet)'; printf '\n'
+printf 'custom color:    '; read_outline_entry CustomAccentColor '61,174,233 (schema default; file not written yet)'; printf '\n'
 
 section "Qt plugin environment"
 printf 'systemd user QT_PLUGIN_PATH: '
