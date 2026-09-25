@@ -156,11 +156,38 @@ done
 ## Debug
 
 The read-only diagnostic script reports the installed files, KWin selection,
-Qt plugin path, output state, wallpaper accent, and recent decoration errors:
+Qt plugin path, output state, wallpaper accent, and recent decoration errors.
+It exits non-zero when a check fails, so it doubles as a health check:
 
 ```sh
 kdecoration/accentoutline/tools/accent-outline-debug
 ```
+
+Every check corresponds to a failure that was silent at the time:
+
+- **`QT_PLUGIN_PATH` validity.** Rejects an unset value, a relative path, and
+  a literal `%h` anywhere in the value. Qt does not expand `%h`, so a value
+  that merely looks correct disables user plugin discovery without any error.
+  The per-service values are authoritative; the systemd manager value is only a
+  warning, because `ksmserver` re-imports its own environment on restart and
+  the manager drifts.
+- **Plugin path durability.** Confirms the `plasma-kwin_wayland` and
+  `plasma-plasmashell` drop-ins and the login-time `environment.d` default all
+  carry an absolute path.
+- **Session integrity.** Flags stale `ksecretd --pam-login` helpers and logind
+  sessions stuck in `closing`, the condition that makes the next compositor
+  start block forever.
+- **KCM resolvability.** Loads the module by its namespace-relative id
+  (`org.kde.kdecoration3.kcm/kcm_accentoutline`), which is the form System
+  Settings and the desktop entry depend on, and checks that the installed
+  desktop entry still uses that form.
+- **Compositor health.** Reports whether KWin answers on D-Bus and has an
+  enabled output, which is the difference between a live process and a usable
+  compositor.
+
+Benign `eglInitialize`/`EGL_NOT_INITIALIZED` and host-portal messages are
+filtered out, since they appear on every start and would otherwise bury real
+problems.
 
 For verbose plugin logging, set these variables before starting the Plasma
 session (they cannot be added to an already-running KWin process):
