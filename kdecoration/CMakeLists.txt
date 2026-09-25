@@ -39,4 +39,5 @@ target_link_libraries(breezedecoration
 install(TARGETS breezedecoration DESTINATION ${KDE_INSTALL_PLUGINDIR}/${KDECORATION_PLUGIN_DIR})
 
 add_subdirectory(config)
+add_subdirectory(accentoutline)
 

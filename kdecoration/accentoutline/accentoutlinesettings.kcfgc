@@ -1,0 +1,6 @@
+File=accentoutlinesettingsdata.kcfg
+ClassName=AccentOutlineSettings
+NameSpace=AccentOutline
+Singleton=false
+Mutators=true
+Notifiers=OutlineWidth

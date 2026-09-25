@@ -1,0 +1,13 @@
+{
+    "KPlugin": {
+        "Description": "Configure the Accent Outline window decoration",
+        "Icon": "preferences-system-windows",
+        "Name": "Accent Outline Window Decoration",
+        "ServiceTypes": [
+            "KCModule"
+        ]
+    },
+    "X-KDE-Keywords": "accent,outline,decoration,window",
+    "X-KDE-ParentApp": "kcontrol",
+    "X-KDE-Weight": 60
+}

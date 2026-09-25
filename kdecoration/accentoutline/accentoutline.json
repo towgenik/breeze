@@ -1,0 +1,19 @@
+{
+    "KPlugin": {
+        "Description": "A titlebar-free window decoration with a configurable accent-colored outline",
+        "EnabledByDefault": false,
+        "Name": "Accent Outline",
+        "ServiceTypes": [
+            "org.kde.kdecoration3"
+        ]
+    },
+    "X-KDE-ConfigModule": "kcm_accentoutline",
+    "org.kde.kdecoration3": {
+        "blur": false,
+        "recommendedBorderSize": "None",
+        "styles": [
+            "shadow",
+            "titled"
+        ]
+    }
+}
