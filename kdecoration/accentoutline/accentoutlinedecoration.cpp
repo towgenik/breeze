@@ -204,8 +204,8 @@ void Decoration::reconfigure()
 {
     m_outlineSettings = std::make_unique<AccentOutline::AccentOutlineSettings>();
     m_outlineSettings->load();
-    qCDebug(lcAccentOutline) << "Loaded outline settings: width" << m_outlineSettings->outlineWidth() << "rounded" << m_outlineSettings->roundedCorners()
-                             << "radius" << m_outlineSettings->cornerRadius() << "customAccent" << m_outlineSettings->useCustomAccent();
+    qCInfo(lcAccentOutline) << "Loaded outline settings: width" << m_outlineSettings->outlineWidth() << "rounded" << m_outlineSettings->roundedCorners()
+                            << "radius" << m_outlineSettings->cornerRadius() << "customAccent" << m_outlineSettings->useCustomAccent();
 
     if (m_outlineSettings) {
         connect(m_outlineSettings.get(), &KConfigSkeleton::configChanged, this, &Decoration::updateDecoration);

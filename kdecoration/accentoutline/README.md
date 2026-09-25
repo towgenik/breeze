@@ -64,6 +64,26 @@ The plugin asks Plasma for the current wallpaper accent. If Plasma cannot
 provide one, it falls back to the current palette accent. Enable the custom
 color option to override that choice.
 
+### Opening the configuration module
+
+The decoration tile in **Window Decoration** carries a pencil action that opens
+the KCM. Per `kcmutils`' `GridDelegate.qml`, that action is only visible while
+the tile is hovered or is the current item, so it is easy to miss.
+
+The KCM can also be opened directly. `kcmshell6` only searches the
+`plasma/kcms*` namespaces, so the module has to be addressed by its
+namespace-relative plugin id, exactly like `PreviewBridge::configure()` in KWin
+does:
+
+```sh
+kcmshell6 org.kde.kdecoration3.kcm/kcm_accentoutline
+```
+
+The bare id (`kcmshell6 kcm_accentoutline`) does **not** resolve and shows a
+"Could not find plugin" error. This is not specific to this KCM; stock Breeze
+behaves the same way. The installed desktop entry
+(`share/applications/kcm_accentoutline.desktop`) already uses the working form.
+
 ## Debug
 
 The read-only diagnostic script reports the installed files, KWin selection,
@@ -113,3 +133,25 @@ cmake --install build --prefix "$HOME/.local"
 The plugin is installed under `~/.local/lib/qt6/plugins`. Ensure that
 `QT_PLUGIN_PATH` contains `~/.local/lib/qt6/plugins` before the next Plasma
 session starts; do not replace the system Breeze plugin.
+
+`QT_PLUGIN_PATH` must be an absolute path. Qt does not expand `%h` in that
+variable, so `QT_PLUGIN_PATH=%h/.local/lib/qt6/plugins` silently disables user
+plugin discovery for KWin, plasmashell and anything they launch (including
+System Settings, which then cannot find either the decoration or its KCM).
+Persist the value with a systemd user environment file:
+
+```ini
+# ~/.config/environment.d/90-kde-user-qt-plugins.conf
+[Environment]
+QT_PLUGIN_PATH=/home/user/.local/lib/qt6/plugins
+```
+
+For a running session, apply it without logging out:
+
+```sh
+systemctl --user set-environment QT_PLUGIN_PATH="$HOME/.local/lib/qt6/plugins"
+dbus-update-activation-environment --systemd QT_PLUGIN_PATH="$HOME/.local/lib/qt6/plugins"
+systemctl --user restart plasma-plasmashell.service
+```
+
+`systemctl --user show-environment` should report the expanded absolute path.

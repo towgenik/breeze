@@ -30,4 +30,10 @@ target_link_libraries(kcm_accentoutline
         KF6::KCMUtils
 )
 
-kcmutils_generate_desktop_file(kcm_accentoutline)
+# kcmshell6 only searches the "plasma/kcms*" namespaces, so the desktop entry has
+# to address this module the same way kwin's decoration KCM does: by its
+# namespace-relative plugin id ("org.kde.kdecoration3.kcm/kcm_accentoutline").
+# kcmutils_generate_desktop_file() would emit the bare "kcm_accentoutline" id,
+# which kcmshell6 cannot resolve, and would mark the entry NoDisplay.
+configure_file(kcm_accentoutline.desktop.in kcm_accentoutline.desktop @ONLY)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/kcm_accentoutline.desktop DESTINATION ${KDE_INSTALL_APPDIR})

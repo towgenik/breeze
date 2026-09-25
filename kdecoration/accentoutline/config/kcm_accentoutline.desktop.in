@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Accent Outline Window Decoration
+GenericName=Window Decoration Settings
+Comment=Configure the Accent Outline window decoration
+Icon=preferences-system-windows
+Exec=kcmshell6 @KDECORATION_KCM_PLUGIN_DIR@/kcm_accentoutline
+Categories=Settings;SystemSettings;
+X-KDE-Keywords=accent,outline,decoration,window
