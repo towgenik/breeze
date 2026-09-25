@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+# Reload the Accent Outline decoration by recycling the compositor safely.
+#
+# Why this exists
+# ---------------
+# On an SDDM-managed Plasma session, `systemctl --user restart
+# plasma-kwin_wayland.service` deadlocks. SDDM supervises the whole session:
+# sddm-helper runs startplasma-wayland, so stopping KWin makes logind mark the
+# session as closing, SDDM tears the session down and builds a replacement
+# (with its own KWin), while systemd simultaneously starts another KWin from
+# plasma-kwin_wayland.service. Three actors race for one DRM master, and the
+# loser blocks inside logind's TakeControl before it logs anything, which is
+# why a hung KWin produces no journal output at all.
+#
+# What this does instead
+# ----------------------
+# Stops the systemd unit first so systemd does not start a competing KWin,
+# lets SDDM rebuild the session, and falls back to starting the unit itself if
+# SDDM does not. It then waits for the replacement to be genuinely usable (D-Bus
+# registered and an output enabled) instead of assuming a live process means a
+# working compositor, reaping hung instances and continuing to wait.
+#
+# Usage: kwin-restart [--timeout SECONDS] [--no-verify]
+# Exit status: 0 usable compositor, 1 timeout, 2 preconditions not met.
+
+set -uo pipefail
+
+TIMEOUT=150
+VERIFY=1
+SERVICE=plasma-kwin_wayland.service
+# How long to let SDDM rebuild the session on its own before helping it.
+SDDM_GRACE=25
+
+while (($#)); do
+    case $1 in
+        --timeout) TIMEOUT=${2:?--timeout needs a value}; shift 2 ;;
+        --no-verify) VERIFY=0; shift ;;
+        -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
+        *) echo "unknown argument: $1" >&2; exit 2 ;;
+    esac
+done
+
+log() { printf '[kwin-restart] %s\n' "$*"; }
+die() {
+    printf '[kwin-restart] error: %s\n' "$1" >&2
+    exit "${2:-1}"
+}
+
+kwin_pids() { pgrep -x kwin_wayland 2>/dev/null; }
+wrapper_pids() { pgrep -f 'kwin_wayland_wrapper' 2>/dev/null; }
+kwin_dbus_ok() { busctl --user call org.kde.KWin /KWin org.kde.KWin supportInformation >/dev/null 2>&1; }
+output_enabled() {
+    busctl --user call org.kde.KWin /KWin org.kde.KWin supportInformation 2>/dev/null |
+        tr '\\' '\n' | grep -q 'Enabled: 1'
+}
+# The session logind currently considers active on the seat.
+active_session() {
+    loginctl seat-status seat0 2>/dev/null |
+        sed -n 's/^Sessions:[[:space:]]*\*\([0-9a-zA-Z]*\).*/\1/p' | head -1
+}
+# PAM's wallet helper (pam_kwallet5) is left running once per session. A stale
+# one keeps its logind session in "closing" forever, and the seat then
+# accumulates sessions that never finish releasing, which is what makes the
+# next compositor start block in logind's TakeControl. Reap the ones whose
+# session is no longer active; never touch the live session's helper.
+reap_stale_helpers() {
+    local pid sess state
+    for pid in $(pgrep -x ksecretd 2>/dev/null); do
+        sess=$(sed -n 's|.*session-\([0-9]*\)\.scope.*|\1|p' "/proc/$pid/cgroup" 2>/dev/null)
+        [[ -z $sess ]] && continue
+        state=$(loginctl show-session "$sess" -p State --value 2>/dev/null)
+        [[ $state == active || $state == active ]] && continue
+        log "reaping stale ksecretd $pid holding session ${sess} (${state})"
+        kill -TERM "$pid" 2>/dev/null
+    done
+}
+
+# A kwin_wayland that has been alive a while but never registered D-Bus is the
+# deadlock described above. The grace period keeps a slow but healthy start
+# from being reaped.
+hung_pids() {
+    local now pid age
+    now=$(date +%s)
+    for pid in $(kwin_pids); do
+        age=$((now - $(stat -c %Y "/proc/$pid" 2>/dev/null || echo "$now")))
+        ((age < 20)) && continue
+        kwin_dbus_ok && continue
+        echo "$pid"
+    done
+}
+
+# ---------------------------------------------------------------- preconditions
+[[ -n $(kwin_pids) ]] || die "no running kwin_wayland found; is this a Wayland session?" 2
+systemctl --user cat "$SERVICE" >/dev/null 2>&1 || die "unit $SERVICE not found" 2
+
+OLD_PID=$(kwin_pids | head -1)
+OLD_SESSION=$(active_session)
+log "current kwin pid ${OLD_PID}, active logind session ${OLD_SESSION:-unknown}"
+
+# Clear the debris before touching the compositor, so the seat is in a sane
+# state when the replacement asks logind for DRM control.
+reap_stale_helpers
+
+# ------------------------------------------------------------------- stop phase
+log "stopping ${SERVICE} so systemd does not start a competing kwin"
+systemctl --user stop "$SERVICE" >/dev/null 2>&1
+
+for _ in $(seq 1 20); do
+    [[ -z $(kwin_pids)$(wrapper_pids) ]] && break
+    sleep 0.5
+done
+
+if [[ -n $(kwin_pids)$(wrapper_pids) ]]; then
+    log "compositor survived the clean stop, sending SIGKILL"
+    pkill -KILL -x kwin_wayland 2>/dev/null
+    pkill -KILL -f kwin_wayland_wrapper 2>/dev/null
+    sleep 1
+fi
+
+# ------------------------------------------------------------------ start phase
+log "waiting up to ${TIMEOUT}s for a usable compositor"
+deadline=$((SECONDS + TIMEOUT))
+helped=0
+
+while ((SECONDS < deadline)); do
+    reap_stale_helpers
+
+    for pid in $(hung_pids); do
+        log "reaping hung kwin pid ${pid}: alive but never registered D-Bus"
+        kill -KILL "$pid" 2>/dev/null
+    done
+
+    if kwin_dbus_ok; then
+        if output_enabled; then
+            NEW_PID=$(kwin_pids | head -1)
+            NEW_SESSION=$(active_session)
+            log "compositor ready: pid ${NEW_PID:-unknown}, session ${NEW_SESSION:-unknown}"
+            ((OLD_SESSION && NEW_SESSION && OLD_SESSION != NEW_SESSION)) &&
+                log "note: the session was recycled (${OLD_SESSION} -> ${NEW_SESSION})"
+            break
+        fi
+        log "D-Bus up but no output enabled yet, waiting"
+    elif [[ -z $(kwin_pids) ]] && ((SECONDS > SDDM_GRACE)) && ((helped == 0)); then
+        log "SDDM did not rebuild the session within ${SDDM_GRACE}s, starting ${SERVICE} directly"
+        systemctl --user start "$SERVICE" >/dev/null 2>&1
+        helped=1
+    fi
+    sleep 2
+done
+
+kwin_dbus_ok || die "no usable compositor after ${TIMEOUT}s (journalctl --user -u ${SERVICE})"
+
+# -------------------------------------------------------------------- verifying
+if ((VERIFY)); then
+    log "verifying:"
+    busctl --user call org.kde.KWin /KWin org.kde.KWin supportInformation 2>/dev/null |
+        tr '\\' '\n' | grep -E 'Plugin: |Enabled: 1' | head -4 | sed 's/^/    /'
+    if journalctl --user -u "$SERVICE" --since '-3min' --no-pager 2>/dev/null |
+        grep -q 'Could not locate decoration plugin'; then
+        log "    WARNING: KWin could not locate the decoration plugin; check QT_PLUGIN_PATH"
+    fi
+fi
+
+log "done"
