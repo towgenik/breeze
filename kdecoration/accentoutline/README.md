@@ -100,27 +100,57 @@ after the compositor picks the library up again. Settings changes do not need
 that: a `KConfigWatcher` on `accentoutlinerc` plus the `/AccentOutline` reload
 signal apply them live.
 
-`systemctl --user restart plasma-kwin_wayland.service` was observed to hang
-reliably on this machine: the process starts, never registers its D-Bus
-service, never spawns Xwayland, and never enables the output. When that
-happens, kill the wrapper as well and start the service fresh:
+### Why `systemctl --user restart plasma-kwin_wayland.service` hangs
+
+Do not use it. The process starts, never registers its D-Bus service, never
+spawns Xwayland, and never enables the output. It produces no journal output at
+all, which is the tell: it is blocked before it logs anything.
+
+Two independent causes, both specific to an SDDM-managed session:
+
+1. **Leaked PAM wallet helpers.** `pam_kwallet5` starts one
+   `ksecretd --pam-login` per session, and on this build they never exit. A
+   stale helper keeps its logind session in `closing` forever, so the seat
+   accumulates sessions that never finish releasing. Nine of them had piled up
+   here. The next compositor start then blocks inside logind's `TakeControl`
+   while negotiating the seat, before it logs anything.
+
+2. **Three supervisors racing for one DRM master.** `sddm-helper` runs
+   `startplasma-wayland`, so SDDM supervises the whole session. Stopping KWin
+   makes logind mark the session as closing, SDDM tears the session down and
+   builds a replacement with its own KWin, while systemd starts another one
+   from `plasma-kwin_wayland.service`. The loser hangs. Killing only
+   `kwin_wayland` and leaving `kwin_wayland_wrapper` alive reproduces this too.
+
+Use the helper instead, which works with both:
 
 ```sh
-pkill -KILL -x kwin_wayland
-pkill -KILL -f kwin_wayland_wrapper
-systemctl --user reset-failed plasma-kwin_wayland.service
-systemctl --user start plasma-kwin_wayland.service
+kdecoration/accentoutline/tools/kwin-restart
 ```
 
-Killing only `kwin_wayland` leaves the old `kwin_wayland_wrapper` alive, and
-the replacement hangs under it. Repeated failed starts also make SDDM start a
-greeter, which takes DRM master away from the session and makes every
-subsequent KWin start fail for the same reason; the greeter usually exits on
-its own once a session grabs the seat again. Check with:
+It stops the unit first so systemd cannot start a competing KWin, reaps stale
+`ksecretd` helpers from non-active sessions, lets SDDM rebuild the session
+(starting the unit itself if SDDM does not), reaps hung instances, and waits
+for a genuinely usable compositor (D-Bus registered *and* an output enabled)
+rather than trusting a live process. The session is recycled as a consequence,
+so open applications are closed.
+
+### Checking the damage by hand
 
 ```sh
-kscreen-doctor -o
-loginctl list-sessions --no-pager
+loginctl list-sessions --no-pager          # sessions stuck in "closing"
+pgrep -a ksecretd                          # one stale helper per dead session
+kscreen-doctor -o                          # is an output actually enabled?
+```
+
+Reaping the stale helpers lets logind remove the dead sessions immediately:
+
+```sh
+for p in $(pgrep -x ksecretd); do
+    s=$(sed -n 's|.*session-\([0-9]*\)\.scope.*|\1|p' /proc/$p/cgroup)
+    [ "$(loginctl show-session "$s" -p State --value)" = active ] ||
+        kill -TERM "$p"
+done
 ```
 
 ## Debug

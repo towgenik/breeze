@@ -79,10 +79,17 @@ reap_stale_helpers() {
 # deadlock described above. The grace period keeps a slow but healthy start
 # from being reaped.
 hung_pids() {
-    local now pid age
-    now=$(date +%s)
+    local pid pstate age
     for pid in $(kwin_pids); do
-        age=$((now - $(stat -c %Y "/proc/$pid" 2>/dev/null || echo "$now")))
+        # A killed process stays visible in /proc until its parent reaps it. A
+        # zombie cannot be signalled again, so skip it rather than reporting
+        # the same pid on every iteration.
+        pstate=$(ps -o stat= -p "$pid" 2>/dev/null)
+        [[ -z $pstate || $pstate == Z* ]] && continue
+        # procfs does not expose a meaningful mtime for /proc/PID, so use the
+        # elapsed-seconds field of ps instead of stat(1).
+        age=$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ')
+        [[ -z $age ]] && continue
         ((age < 20)) && continue
         kwin_dbus_ok && continue
         echo "$pid"
