@@ -93,6 +93,36 @@ The bare id (`kcmshell6 kcm_accentoutline`) does **not** resolve and shows a
 behaves the same way. The installed desktop entry
 (`share/applications/kcm_accentoutline.desktop`) already uses the working form.
 
+## Reloading
+
+KWin loads decoration plugins once, so plugin code changes only take effect
+after the compositor picks the library up again. Settings changes do not need
+that: a `KConfigWatcher` on `accentoutlinerc` plus the `/AccentOutline` reload
+signal apply them live.
+
+`systemctl --user restart plasma-kwin_wayland.service` was observed to hang
+reliably on this machine: the process starts, never registers its D-Bus
+service, never spawns Xwayland, and never enables the output. When that
+happens, kill the wrapper as well and start the service fresh:
+
+```sh
+pkill -KILL -x kwin_wayland
+pkill -KILL -f kwin_wayland_wrapper
+systemctl --user reset-failed plasma-kwin_wayland.service
+systemctl --user start plasma-kwin_wayland.service
+```
+
+Killing only `kwin_wayland` leaves the old `kwin_wayland_wrapper` alive, and
+the replacement hangs under it. Repeated failed starts also make SDDM start a
+greeter, which takes DRM master away from the session and makes every
+subsequent KWin start fail for the same reason; the greeter usually exits on
+its own once a session grabs the seat again. Check with:
+
+```sh
+kscreen-doctor -o
+loginctl list-sessions --no-pager
+```
+
 ## Debug
 
 The read-only diagnostic script reports the installed files, KWin selection,
