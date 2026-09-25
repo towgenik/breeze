@@ -11,13 +11,26 @@
 
 #include <KDecoration3/ScaleHelpers>
 
+#include <QCoreApplication>
 #include <QDBusConnection>
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
+#include <QLoggingCategory>
 #include <QMarginsF>
 #include <QPainter>
 
 #include <algorithm>
+
+Q_LOGGING_CATEGORY(lcAccentOutline, "org.towgenik.accentoutline", QtInfoMsg)
+
+namespace
+{
+bool debugEnabled()
+{
+    static const bool enabled = qEnvironmentVariableIsSet("ACCENT_OUTLINE_DEBUG");
+    return enabled;
+}
+}
 
 K_PLUGIN_FACTORY_WITH_JSON(AccentOutlineFactory, "accentoutline.json", registerPlugin<AccentOutline::Decoration>();)
 
@@ -33,6 +46,7 @@ AccentColorProvider *AccentColorProvider::instance()
 
 AccentColorProvider::AccentColorProvider()
 {
+    qCInfo(lcAccentOutline) << "Accent color provider initialized";
     auto dbus = QDBusConnection::sessionBus();
     dbus.connect(QStringLiteral("org.kde.plasmashell"),
                  QStringLiteral("/PlasmaShell"),
@@ -52,6 +66,7 @@ AccentColorProvider::AccentColorProvider()
 
 void AccentColorProvider::onWallpaperChanged(quint32)
 {
+    qCDebug(lcAccentOutline) << "Plasma reported a wallpaper change";
     requestColor();
 }
 
@@ -59,6 +74,7 @@ void AccentColorProvider::onColorChanged(const QString &color)
 {
     const QColor accent = QColor::fromString(color);
     if (accent.isValid() && accent.alpha() > 0) {
+        qCDebug(lcAccentOutline) << "Plasma accent color changed to" << accent.name();
         m_color = accent;
         Q_EMIT colorChanged();
     }
@@ -67,9 +83,11 @@ void AccentColorProvider::onColorChanged(const QString &color)
 void AccentColorProvider::requestColor()
 {
     if (m_watcher) {
+        qCDebug(lcAccentOutline) << "Accent color request already pending";
         return;
     }
 
+    qCDebug(lcAccentOutline) << "Requesting wallpaper accent from PlasmaShell";
     const QDBusMessage request = QDBusMessage::createMethodCall(QStringLiteral("org.kde.plasmashell"),
                                                                 QStringLiteral("/PlasmaShell"),
                                                                 QStringLiteral("org.kde.PlasmaShell"),
@@ -83,9 +101,14 @@ void AccentColorProvider::requestColor()
         if (reply.isValid()) {
             const QColor accent = QColor::fromRgba(reply.value());
             if (accent.isValid() && accent.alpha() > 0) {
+                qCInfo(lcAccentOutline) << "Resolved wallpaper accent:" << accent.name();
                 m_color = accent;
                 Q_EMIT colorChanged();
+            } else {
+                qCWarning(lcAccentOutline) << "PlasmaShell returned a transparent or invalid accent";
             }
+        } else {
+            qCWarning(lcAccentOutline) << "PlasmaShell accent request failed:" << reply.error().message();
         }
 
         watcher->deleteLater();
@@ -105,6 +128,13 @@ void Decoration::paint(QPainter *, const QRectF &)
 
 bool Decoration::init()
 {
+    static bool pathsLogged = false;
+    if (!pathsLogged) {
+        qCInfo(lcAccentOutline) << "QT_PLUGIN_PATH=" << qEnvironmentVariable("QT_PLUGIN_PATH", "<unset>");
+        qCInfo(lcAccentOutline) << "Qt library paths:" << QCoreApplication::libraryPaths();
+        pathsLogged = true;
+    }
+
     m_kdeGlobals = KSharedConfig::openConfig(QStringLiteral("kdeglobals"));
     m_kdeGlobalsWatcher = KConfigWatcher::create(m_kdeGlobals);
 
@@ -146,6 +176,7 @@ bool Decoration::init()
 
     setShadow(nullptr);
     updateDecoration();
+    qCInfo(lcAccentOutline) << "Initialized decoration for" << window()->windowClass() << "scale" << window()->nextScale();
     return true;
 }
 
@@ -153,6 +184,7 @@ void Decoration::reconfigure()
 {
     m_settings = std::make_unique<AccentOutline::AccentOutlineSettings>();
     m_settings->load();
+    qCDebug(lcAccentOutline) << "Loaded outline width:" << m_settings->outlineWidth();
 
     if (m_settings) {
         connect(m_settings.get(), &KConfigSkeleton::configChanged, this, &Decoration::updateDecoration);
@@ -192,6 +224,12 @@ void Decoration::updateDecoration()
     }
 
     setShadow(nullptr);
+    if (debugEnabled()) {
+        const auto outline = borderOutline();
+        qCInfo(lcAccentOutline) << "geometry: borders" << borders() << "resizeOnly" << resizeOnlyBorders() << "titleBar" << titleBar() << "maximized"
+                                << maximized << "outlineNull" << outline.isNull() << "thickness" << outline.thickness() << "color" << outline.color().name()
+                                << "shadow" << (shadow() ? "present" : "null");
+    }
     update();
 }
 
@@ -203,6 +241,7 @@ QColor Decoration::resolvedAccentColor() const
     if (m_accentColorProvider) {
         const QColor wallpaperAccent = m_accentColorProvider->color();
         if (wallpaperAccent.isValid() && wallpaperAccent.alpha() > 0) {
+            qCDebug(lcAccentOutline) << "Accent source: PlasmaShell wallpaper" << wallpaperAccent.name();
             return wallpaperAccent;
         }
     }
@@ -216,6 +255,7 @@ QColor Decoration::resolvedAccentColor() const
         // accent mode is enabled. Respect that mode instead of treating a
         // user-selected custom accent as a wallpaper color.
         if (fromWallpaper && configuredAccent.isValid() && configuredAccent.alpha() > 0) {
+            qCDebug(lcAccentOutline) << "Accent source: kdeglobals AccentColor" << configuredAccent.name();
             return configuredAccent;
         }
     }
@@ -223,14 +263,17 @@ QColor Decoration::resolvedAccentColor() const
     const QPalette::ColorGroup group = window()->isActive() ? QPalette::Active : QPalette::Inactive;
     const QColor paletteAccent = window()->palette().color(group, QPalette::Accent);
     if (paletteAccent.isValid()) {
+        qCDebug(lcAccentOutline) << "Accent source: window QPalette::Accent" << paletteAccent.name();
         return paletteAccent;
     }
 
     const QColor paletteHighlight = window()->palette().color(group, QPalette::Highlight);
     if (paletteHighlight.isValid()) {
+        qCDebug(lcAccentOutline) << "Accent source: window QPalette::Highlight" << paletteHighlight.name();
         return paletteHighlight;
     }
 
+    qCWarning(lcAccentOutline) << "No accent color available; using fallback blue";
     return QColor(61, 174, 233);
 }
 }

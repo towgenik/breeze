@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# Read-only diagnostics for the Accent Outline KDecoration3 plugin.
+set -u
+
+plugin_id="io.github.towgenik.accentoutline"
+plugin_root="$HOME/.local/lib/qt6/plugins"
+plugin_dir="$plugin_root/org.kde.kdecoration3"
+plugin_file="$plugin_dir/$plugin_id.so"
+kcm_file="$plugin_root/org.kde.kdecoration3.kcm/kcm_accentoutline.so"
+
+section() {
+    printf '\n== %s ==\n' "$1"
+}
+
+section "Files"
+printf 'plugin: %s\n' "$plugin_file"
+if [ -f "$plugin_file" ]; then
+    stat -c '  size=%s mode=%A modified=%y' "$plugin_file"
+else
+    echo '  MISSING'
+fi
+printf 'kcm:    %s\n' "$kcm_file"
+if [ -f "$kcm_file" ]; then
+    stat -c '  size=%s mode=%A modified=%y' "$kcm_file"
+else
+    echo '  MISSING'
+fi
+
+section "Configuration"
+printf 'kwinrc library: '
+kreadconfig6 --file kwinrc --group org.kde.kdecoration2 --key library 2>/dev/null || echo '<unavailable>'
+printf 'kwinrc theme:   '
+kreadconfig6 --file kwinrc --group org.kde.kdecoration2 --key theme 2>/dev/null || echo '<unavailable>'
+printf 'outline width:  '
+kreadconfig6 --file accentoutlinerc --group Common --key OutlineWidth 2>/dev/null || echo '8 (schema default; file not written yet)'
+
+section "Qt plugin environment"
+printf 'systemd user QT_PLUGIN_PATH: '
+systemctl --user show-environment 2>/dev/null | sed -n 's/^QT_PLUGIN_PATH=//p' || true
+printf 'process environment QT_PLUGIN_PATH: %s\n' "${QT_PLUGIN_PATH-<unset>}"
+
+section "KWin"
+printf 'service: '
+systemctl --user is-active plasma-kwin_wayland.service 2>/dev/null || true
+support_info=$(busctl --user call org.kde.KWin /KWin org.kde.KWin supportInformation 2>/dev/null || true)
+printf '%s\n' "$support_info" | tr '\\' '\n' | rg 'Plugin: |Name: eDP|Name: |Enabled: ' | head -20 || true
+if printf '%s' "$support_info" | grep -q "Plugin: $plugin_id"; then
+    echo 'RESULT: KWin has loaded the Accent Outline plugin.'
+else
+    echo 'RESULT: KWin has NOT loaded the Accent Outline plugin.'
+fi
+
+section "Wallpaper accent"
+accent=$(qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.color 2>/dev/null || true)
+if [ -n "$accent" ]; then
+    printf 'PlasmaShell.color: %s\n' "$accent"
+else
+    echo 'PlasmaShell.color: unavailable'
+fi
+
+section "Recent KWin decoration messages"
+journalctl --user -u plasma-kwin_wayland.service --since '-15 minutes' --no-pager 2>/dev/null \
+    | grep -Ei 'accent|decoration|plugin|failed|error' \
+    | tail -80 || true
+
+section "KCM smoke test"
+if [ -f "$kcm_file" ]; then
+    if QT_QPA_PLATFORM=offscreen QT_PLUGIN_PATH="${QT_PLUGIN_PATH:-$plugin_root}" \
+        kcmshell6 --smoke-test "$kcm_file" >/dev/null 2>&1; then
+        echo 'KCM smoke test: PASS'
+    else
+        echo 'KCM smoke test: FAIL'
+    fi
+else
+    echo 'KCM smoke test: SKIPPED (module missing)'
+fi

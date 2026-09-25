@@ -12,14 +12,18 @@
 #include <QDBusMessage>
 #include <QFormLayout>
 #include <QLabel>
+#include <QLoggingCategory>
 #include <QSpinBox>
 #include <QVBoxLayout>
+
+Q_LOGGING_CATEGORY(lcAccentOutlineKcm, "org.towgenik.accentoutline.kcm", QtInfoMsg)
 
 namespace AccentOutline
 {
 ConfigWidget::ConfigWidget(QObject *parent, const KPluginMetaData &data, const QVariantList &)
     : KCModule(parent, data)
 {
+    qCInfo(lcAccentOutlineKcm) << "Loading Accent Outline configuration module";
     auto *form = new QFormLayout;
     form->addRow(i18n("Outline width:"), m_outlineWidth = new QSpinBox(widget()));
     m_outlineWidth->setRange(0, 64);
@@ -53,6 +57,7 @@ void ConfigWidget::load()
 {
     m_settings = std::make_unique<AccentOutline::AccentOutlineSettings>();
     m_settings->load();
+    qCInfo(lcAccentOutlineKcm) << "Loaded outline width:" << m_settings->outlineWidth();
     m_outlineWidth->setValue(m_settings->outlineWidth());
     setNeedsSave(false);
 }
@@ -66,6 +71,7 @@ void ConfigWidget::save()
 
     m_settings->setOutlineWidth(m_outlineWidth->value());
     m_settings->save();
+    qCInfo(lcAccentOutlineKcm) << "Saved outline width:" << m_settings->outlineWidth();
     setNeedsSave(false);
 
     const QDBusMessage message = QDBusMessage::createSignal(QStringLiteral("/KWin"), QStringLiteral("org.kde.KWin"), QStringLiteral("reloadConfig"));
