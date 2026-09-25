@@ -50,8 +50,8 @@ Install the plugin and its KCM, then select **Accent Outline** in **System
 Settings → Window Management → Window Decoration**. Its configuration module
 exposes an outline-width control from 0–64 px.
 
-The color is shared with Plasma's Colors settings. To use the wallpaper accent,
-select **Accent color from wallpaper** there.
+The plugin asks Plasma for the current wallpaper accent. If Plasma cannot
+provide one, it falls back to the current palette accent.
 
 ## Debug
 

@@ -30,8 +30,8 @@ ConfigWidget::ConfigWidget(QObject *parent, const KPluginMetaData &data, const Q
     m_outlineWidth->setSuffix(i18n(" px"));
     m_outlineWidth->setToolTip(i18n("The outline is drawn outside the window and does not reduce the client area."));
 
-    auto *help = new QLabel(i18n("The outline follows Plasma's resolved accent color. Enable “Accent color from wallpaper” in the Colors settings to use the "
-                                 "wallpaper color. Set the width to 0 to hide the outline."),
+    auto *help = new QLabel(i18n("The outline requests Plasma's wallpaper accent color. If Plasma cannot provide one, the current palette accent is used. "
+                                 "Set the width to 0 to hide the outline."),
                             widget());
     help->setWordWrap(true);
 
@@ -76,6 +76,10 @@ void ConfigWidget::save()
 
     const QDBusMessage message = QDBusMessage::createSignal(QStringLiteral("/KWin"), QStringLiteral("org.kde.KWin"), QStringLiteral("reloadConfig"));
     QDBusConnection::sessionBus().send(message);
+
+    const QDBusMessage outlineReload =
+        QDBusMessage::createSignal(QStringLiteral("/AccentOutline"), QStringLiteral("io.github.towgenik.AccentOutline"), QStringLiteral("reloadConfig"));
+    QDBusConnection::sessionBus().send(outlineReload);
 }
 
 void ConfigWidget::updateChanged()

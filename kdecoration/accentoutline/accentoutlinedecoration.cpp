@@ -145,6 +145,23 @@ bool Decoration::init()
                  QStringLiteral("notifyChange"),
                  this,
                  SLOT(updateDecoration()));
+    if (!dbus.connect(QString(),
+                      QStringLiteral("/AccentOutline"),
+                      QStringLiteral("io.github.towgenik.AccentOutline"),
+                      QStringLiteral("reloadConfig"),
+                      this,
+                      SLOT(reconfigure()))) {
+        qCWarning(lcAccentOutline) << "Could not connect to the Accent Outline reload signal";
+    }
+
+    m_outlineConfig = KSharedConfig::openConfig(QStringLiteral("accentoutlinerc"));
+    m_outlineConfigWatcher = KConfigWatcher::create(m_outlineConfig);
+    connect(m_outlineConfigWatcher.data(), &KConfigWatcher::configChanged, this, [this](const KConfigGroup &group, const QByteArrayList &names) {
+        if (group.name() == QLatin1String("Common") && (names.isEmpty() || names.contains(QByteArrayLiteral("OutlineWidth")))) {
+            qCDebug(lcAccentOutline) << "Outline configuration changed; reloading";
+            reconfigure();
+        }
+    });
 
     m_accentColorProvider = AccentColorProvider::instance();
     connect(m_accentColorProvider, &AccentColorProvider::colorChanged, this, &Decoration::updateDecoration);
@@ -182,12 +199,12 @@ bool Decoration::init()
 
 void Decoration::reconfigure()
 {
-    m_settings = std::make_unique<AccentOutline::AccentOutlineSettings>();
-    m_settings->load();
-    qCDebug(lcAccentOutline) << "Loaded outline width:" << m_settings->outlineWidth();
+    m_outlineSettings = std::make_unique<AccentOutline::AccentOutlineSettings>();
+    m_outlineSettings->load();
+    qCDebug(lcAccentOutline) << "Loaded outline width:" << m_outlineSettings->outlineWidth();
 
-    if (m_settings) {
-        connect(m_settings.get(), &KConfigSkeleton::configChanged, this, &Decoration::updateDecoration);
+    if (m_outlineSettings) {
+        connect(m_outlineSettings.get(), &KConfigSkeleton::configChanged, this, &Decoration::updateDecoration);
     }
 
     updateDecoration();
@@ -199,11 +216,11 @@ void Decoration::updateDecoration()
         return;
     }
 
-    const int configuredWidth = m_settings ? m_settings->outlineWidth() : 8;
+    const int configuredWidth = m_outlineSettings ? m_outlineSettings->outlineWidth() : 8;
     const qreal scale = window()->nextScale() > 0 ? window()->nextScale() : 1;
     const qreal outlineWidth = KDecoration3::snapToPixelGrid(configuredWidth, scale);
     const bool maximized = window()->isMaximized();
-    const qreal resizeWidth = maximized ? 0 : qMax<qreal>(outlineWidth, settings() ? settings()->largeSpacing() : 0);
+    const qreal resizeWidth = maximized ? 0 : qMax<qreal>(KDecoration3::pixelSize(scale), settings() ? settings()->largeSpacing() : 0);
 
     // There is deliberately no titlebar or button area. The resize-only
     // margins keep the edges usable without consuming client-area space,

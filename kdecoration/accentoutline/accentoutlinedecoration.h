@@ -65,14 +65,16 @@ public:
 
 private Q_SLOTS:
     void updateDecoration();
+    void reconfigure();
 
 private:
-    void reconfigure();
     QColor resolvedAccentColor() const;
 
-    std::unique_ptr<AccentOutline::AccentOutlineSettings> m_settings;
+    std::unique_ptr<AccentOutline::AccentOutlineSettings> m_outlineSettings;
     KSharedConfig::Ptr m_kdeGlobals;
     KConfigWatcher::Ptr m_kdeGlobalsWatcher;
+    KSharedConfig::Ptr m_outlineConfig;
+    KConfigWatcher::Ptr m_outlineConfigWatcher;
     AccentColorProvider *m_accentColorProvider = nullptr;
 };
 }
